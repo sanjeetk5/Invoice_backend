@@ -1,7 +1,13 @@
 const PDFDocument = require("pdfkit");
+const path = require("path");
 const Invoice = require("../models/invoice");
 const InvoiceLine = require("../models/invoiceline");
 const Payment = require("../models/payment");
+
+// ✅ format number properly (fixes weird '1 issue)
+const formatMoney = (value) => {
+  return Number(value || 0).toFixed(2);
+};
 
 const generateInvoicePDF = async (req, res) => {
   try {
@@ -32,7 +38,7 @@ const generateInvoicePDF = async (req, res) => {
         ? "€"
         : "$";
 
-    // Headers
+    // ------------------ PDF RESPONSE HEADERS ------------------
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -42,7 +48,19 @@ const generateInvoicePDF = async (req, res) => {
     const doc = new PDFDocument({ margin: 50, size: "A4" });
     doc.pipe(res);
 
-    // Helper function
+    // ------------------ COMPANY INFO ------------------
+    const company = {
+      name: "Monefy Invoice System",
+      email: "support@monefy.com",
+      phone: "+91 98765 43210",
+      address: "Noida, Uttar Pradesh, India",
+    };
+
+    // ------------------ LOGO ------------------
+    // Put your logo inside backend/assets/logo.png
+    // const logoPath = path.join(__dirname, "../assets/logo.png");
+
+    // Helper to draw line
     const drawLine = (y) => {
       doc
         .strokeColor("#E5E7EB")
@@ -52,94 +70,120 @@ const generateInvoicePDF = async (req, res) => {
         .stroke();
     };
 
-    // ---------------- HEADER ----------------
+    // Helper to check page break
+    const checkPageBreak = (y) => {
+      if (y > 740) {
+        doc.addPage();
+        return 50;
+      }
+      return y;
+    };
+
+    // ------------------ HEADER ------------------
+    let startY = 45;
+
+    // Logo
+    // try {
+    //   doc.image(logoPath, 50, startY, { width: 50 });
+    // } catch (err) {
+    //   // if logo missing, ignore
+    // }
+
+    // Company name
     doc
-      .fontSize(28)
+      .fontSize(18)
       .fillColor("#111827")
-      .text("INVOICE", 50, 45);
-
-    doc
-      .fontSize(12)
-      .fillColor("#6B7280")
-      .text(`Invoice No: ${invoice.invoiceNumber}`, 400, 55, { align: "right" });
+      .font("Helvetica-Bold")
+      .text(company.name, 110, startY);
 
     doc
       .fontSize(10)
       .fillColor("#6B7280")
-      .text(`Issue Date: ${new Date(invoice.issueDate).toDateString()}`, 400, 75, {
-        align: "right",
-      });
+      .font("Helvetica")
+      .text(company.address, 110, startY + 22);
 
+    doc.text(company.email, 110, startY + 37);
+    doc.text(company.phone, 110, startY + 52);
+
+    // Invoice Title
+    doc
+      .fontSize(26)
+      .fillColor("#111827")
+      .font("Helvetica-Bold")
+      .text("INVOICE", 400, startY, { align: "right" });
+
+    // Invoice Meta Info
     doc
       .fontSize(10)
       .fillColor("#6B7280")
-      .text(`Due Date: ${new Date(invoice.dueDate).toDateString()}`, 400, 92, {
+      .font("Helvetica")
+      .text(`Invoice No: ${invoice.invoiceNumber}`, 400, startY + 35, {
         align: "right",
       });
 
-    // Status Badge
-    const statusColor =
-      invoice.status === "PAID" ? "#16A34A" : "#D97706";
+    doc.text(`Issue Date: ${new Date(invoice.issueDate).toDateString()}`, 400, startY + 50, {
+      align: "right",
+    });
 
-    doc
-      .roundedRect(400, 115, 140, 25, 12)
-      .fill(statusColor);
+    doc.text(`Due Date: ${new Date(invoice.dueDate).toDateString()}`, 400, startY + 65, {
+      align: "right",
+    });
+
+    // Status badge
+    const statusColor = invoice.status === "PAID" ? "#16A34A" : "#D97706";
+
+    doc.roundedRect(405, startY + 85, 130, 25, 12).fill(statusColor);
 
     doc
       .fillColor("white")
       .fontSize(11)
       .font("Helvetica-Bold")
-      .text(invoice.status, 400, 122, {
-        width: 140,
+      .text(invoice.status, 405, startY + 92, {
+        width: 130,
         align: "center",
       });
 
-    doc.font("Helvetica").fillColor("#111827");
+    drawLine(150);
 
-    drawLine(155);
-
-    // ---------------- CUSTOMER INFO ----------------
-    doc
-      .fontSize(14)
-      .font("Helvetica-Bold")
-      .text("Billed To", 50, 175);
-
+    // ------------------ BILL TO ------------------
     doc
       .fontSize(12)
-      .font("Helvetica")
       .fillColor("#111827")
-      .text(invoice.customerName, 50, 195);
+      .font("Helvetica-Bold")
+      .text("Billed To", 50, 170);
+
+    doc
+      .fontSize(11)
+      .fillColor("#111827")
+      .font("Helvetica")
+      .text(invoice.customerName, 50, 190);
 
     doc
       .fontSize(10)
       .fillColor("#6B7280")
-      .text(`Currency: ${invoice.currency}`, 50, 215);
+      .text(`Currency: ${invoice.currency}`, 50, 208);
 
-    doc.fillColor("#111827");
-
-    // ---------------- LINE ITEMS TABLE ----------------
-    doc.font("Helvetica-Bold").fontSize(12).fillColor("#111827");
-    doc.text("Line Items", 50, 250);
-
-    // Table Header Background
+    // ------------------ LINE ITEMS ------------------
     doc
-      .roundedRect(50, 275, 495, 25, 6)
-      .fill("#F3F4F6");
+      .fontSize(12)
+      .fillColor("#111827")
+      .font("Helvetica-Bold")
+      .text("Line Items", 50, 245);
+
+    // Table Header background
+    doc.roundedRect(50, 265, 495, 25, 6).fill("#F3F4F6");
 
     doc.fillColor("#111827").fontSize(10).font("Helvetica-Bold");
-    doc.text("Description", 60, 283);
-    doc.text("Qty", 300, 283);
-    doc.text("Unit Price", 360, 283);
-    doc.text("Total", 470, 283);
+    doc.text("Description", 60, 273);
+    doc.text("Qty", 300, 273);
+    doc.text("Unit Price", 360, 273);
+    doc.text("Line Total", 470, 273);
 
-    let y = 310;
+    let y = 305;
     doc.font("Helvetica").fontSize(10).fillColor("#111827");
 
-    lineItems.forEach((item, index) => {
-      if (y > 650) {
-        doc.addPage();
-        y = 50;
-      }
+    lineItems.forEach((item) => {
+      y = checkPageBreak(y);
 
       doc.fillColor("#111827").text(item.description, 60, y, { width: 220 });
 
@@ -147,18 +191,17 @@ const generateInvoicePDF = async (req, res) => {
 
       doc
         .fillColor("#6B7280")
-        .text(`${currencySymbol}${item.unitPrice.toFixed(2)}`, 360, y);
+        .text(`${currencySymbol}${formatMoney(item.unitPrice)}`, 360, y);
 
       doc
         .fillColor("#111827")
         .font("Helvetica-Bold")
-        .text(`${currencySymbol}${item.lineTotal.toFixed(2)}`, 470, y);
+        .text(`${currencySymbol}${formatMoney(item.lineTotal)}`, 470, y);
 
       doc.font("Helvetica");
 
-      y += 25;
+      y += 22;
 
-      // row separator
       doc
         .strokeColor("#E5E7EB")
         .lineWidth(0.7)
@@ -169,93 +212,82 @@ const generateInvoicePDF = async (req, res) => {
       y += 10;
     });
 
-    // ---------------- TOTALS BOX ----------------
-    let totalsY = y + 30;
+    // ------------------ TOTALS BOX ------------------
+    let totalsY = y + 25;
+    totalsY = checkPageBreak(totalsY);
 
-    if (totalsY < 500) totalsY = 500;
+    doc.roundedRect(330, totalsY, 215, 130, 10).fill("#F9FAFB");
 
-    doc
-      .roundedRect(330, totalsY, 215, 120, 10)
-      .fill("#F9FAFB");
-
-    doc.fillColor("#111827").fontSize(10).font("Helvetica-Bold");
-
-    doc.text("Subtotal:", 350, totalsY + 20);
-    doc.text(`${currencySymbol}${subtotal.toFixed(2)}`, 450, totalsY + 20, {
+    doc.fontSize(10).font("Helvetica-Bold").fillColor("#111827");
+    doc.text("Subtotal:", 350, totalsY + 18);
+    doc.text(`${currencySymbol}${formatMoney(subtotal)}`, 450, totalsY + 18, {
       align: "right",
       width: 80,
     });
 
     doc.font("Helvetica").fillColor("#6B7280");
     doc.text(`Tax (${taxPercent}%):`, 350, totalsY + 40);
-    doc.text(`${currencySymbol}${taxAmount.toFixed(2)}`, 450, totalsY + 40, {
+    doc.text(`${currencySymbol}${formatMoney(taxAmount)}`, 450, totalsY + 40, {
       align: "right",
       width: 80,
     });
 
     doc.font("Helvetica-Bold").fillColor("#111827");
-    doc.text("Total:", 350, totalsY + 60);
-    doc.text(`${currencySymbol}${total.toFixed(2)}`, 450, totalsY + 60, {
+    doc.text("Total:", 350, totalsY + 62);
+    doc.text(`${currencySymbol}${formatMoney(total)}`, 450, totalsY + 62, {
       align: "right",
       width: 80,
     });
 
     doc.font("Helvetica").fillColor("#6B7280");
-    doc.text("Amount Paid:", 350, totalsY + 80);
-    doc.text(`${currencySymbol}${amountPaid.toFixed(2)}`, 450, totalsY + 80, {
+    doc.text("Amount Paid:", 350, totalsY + 84);
+    doc.text(`${currencySymbol}${formatMoney(amountPaid)}`, 450, totalsY + 84, {
       align: "right",
       width: 80,
     });
 
     doc.font("Helvetica-Bold").fillColor("#DC2626");
-    doc.text("Balance Due:", 350, totalsY + 100);
-    doc.text(`${currencySymbol}${balanceDue.toFixed(2)}`, 450, totalsY + 100, {
+    doc.text("Balance Due:", 350, totalsY + 106);
+    doc.text(`${currencySymbol}${formatMoney(balanceDue)}`, 450, totalsY + 106, {
       align: "right",
       width: 80,
     });
 
-    doc.fillColor("#111827");
-
-    // ---------------- PAYMENTS SECTION ----------------
-    const paymentsY = totalsY + 150;
+    // ------------------ PAYMENTS ------------------
+    let paymentsY = totalsY + 160;
+    paymentsY = checkPageBreak(paymentsY);
 
     doc.fontSize(12).font("Helvetica-Bold").fillColor("#111827");
     doc.text("Payments", 50, paymentsY);
 
     let payY = paymentsY + 20;
-
     doc.fontSize(10).font("Helvetica").fillColor("#374151");
 
     if (payments.length === 0) {
       doc.fillColor("#6B7280").text("No payments yet.", 50, payY);
     } else {
       payments.forEach((pay, index) => {
-        doc
-          .roundedRect(50, payY, 495, 25, 8)
-          .fill("#F3F4F6");
+        payY = checkPageBreak(payY);
+
+        doc.roundedRect(50, payY, 495, 25, 8).fill("#F3F4F6");
 
         doc.fillColor("#111827").text(
-          `${index + 1}. Paid ${currencySymbol}${pay.amount.toFixed(2)} on ${new Date(
-            pay.paymentDate
-          ).toDateString()}`,
+          `${index + 1}. Paid ${currencySymbol}${formatMoney(
+            pay.amount
+          )} on ${new Date(pay.paymentDate).toDateString()}`,
           60,
           payY + 7
         );
 
         payY += 35;
-
-        if (payY > 750) {
-          doc.addPage();
-          payY = 50;
-        }
       });
     }
 
-    // ---------------- FOOTER ----------------
+    // ------------------ FOOTER ------------------
     doc
       .fontSize(9)
       .fillColor("#9CA3AF")
-      .text("Generated by Invoice Management System", 50, 780, {
+      .text(`Generated by ${company.name}`, 50, 790, {
         align: "center",
         width: 495,
       });

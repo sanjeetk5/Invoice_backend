@@ -41,6 +41,7 @@ const generateInvoicePDF = async (req, res) => {
         ? "€"
         : "$";
 
+    // ---------------- PDF RESPONSE HEADERS ----------------
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -128,108 +129,132 @@ const generateInvoicePDF = async (req, res) => {
       });
 
     // ---------------- META CARD BOX (RIGHT SIDE) ----------------
-    const cardX = 345;
-    const cardY = startY + 40;
-    const cardWidth = 200;
+    const cardX = 335;
+    const cardY = startY + 45;
+    const cardWidth = 210;
     const cardHeight = 85;
 
     // Gray Card Background
     doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 10).fill("#F3F4F6");
 
-    // Card Text
+    // Card Border (premium look)
+    doc
+      .roundedRect(cardX, cardY, cardWidth, cardHeight, 10)
+      .lineWidth(1)
+      .strokeColor("#E5E7EB")
+      .stroke();
+
+    // Card Labels
     doc.font(REGULAR).fontSize(10).fillColor("#374151");
 
-    doc.text(`Invoice No:`, cardX + 15, cardY + 12);
+    doc.text("Invoice No:", cardX + 15, cardY + 12);
+
+    // Invoice Number - SINGLE LINE (no wrap)
     doc
       .font(BOLD)
+      .fontSize(9)
       .fillColor("#111827")
       .text(invoice.invoiceNumber, cardX + 85, cardY + 12, {
         width: cardWidth - 100,
         align: "right",
+        lineBreak: false,
+        ellipsis: true,
       });
 
-    doc.font(REGULAR).fillColor("#374151");
-    doc.text(`Issue Date:`, cardX + 15, cardY + 32);
+    doc.font(REGULAR).fontSize(10).fillColor("#374151");
+    doc.text("Issue Date:", cardX + 15, cardY + 34);
+
     doc
       .fillColor("#111827")
-      .text(new Date(invoice.issueDate).toDateString(), cardX + 85, cardY + 32, {
+      .text(new Date(invoice.issueDate).toDateString(), cardX + 85, cardY + 34, {
         width: cardWidth - 100,
         align: "right",
+        lineBreak: false,
       });
 
     doc.fillColor("#374151");
-    doc.text(`Due Date:`, cardX + 15, cardY + 52);
+    doc.text("Due Date:", cardX + 15, cardY + 54);
+
     doc
       .fillColor("#111827")
-      .text(new Date(invoice.dueDate).toDateString(), cardX + 85, cardY + 52, {
+      .text(new Date(invoice.dueDate).toDateString(), cardX + 85, cardY + 54, {
         width: cardWidth - 100,
         align: "right",
+        lineBreak: false,
       });
 
-    // ---------------- STATUS BADGE BELOW META CARD ----------------
+    // ---------------- STATUS BADGE ----------------
     const statusColor = invoice.status === "PAID" ? "#16A34A" : "#D97706";
 
-    doc.roundedRect(cardX + 30, cardY + 95, 140, 25, 12).fill(statusColor);
+    doc.roundedRect(cardX + 35, cardY + 98, 140, 25, 12).fill(statusColor);
+
+    // Badge border
+    doc
+      .roundedRect(cardX + 35, cardY + 98, 140, 25, 12)
+      .lineWidth(1)
+      .strokeColor("#0F9D58")
+      .stroke();
 
     doc
       .fillColor("white")
       .font(BOLD)
       .fontSize(11)
-      .text(invoice.status, cardX + 30, cardY + 102, {
+      .text(invoice.status, cardX + 35, cardY + 105, {
         width: 140,
         align: "center",
       });
 
-    drawLine(175);
+    drawLine(185);
 
     // ---------------- BILL TO ----------------
     doc
       .font(BOLD)
       .fontSize(12)
       .fillColor("#111827")
-      .text("Billed To", 50, 195);
+      .text("Billed To", 50, 205);
 
     doc
       .font(REGULAR)
       .fontSize(11)
       .fillColor("#111827")
-      .text(invoice.customerName, 50, 215);
+      .text(invoice.customerName, 50, 225);
 
     doc
       .font(REGULAR)
       .fontSize(10)
       .fillColor("#6B7280")
-      .text(`Currency: ${invoice.currency}`, 50, 235);
+      .text(`Currency: ${invoice.currency}`, 50, 245);
 
     // ---------------- LINE ITEMS ----------------
     doc
       .font(BOLD)
       .fontSize(12)
       .fillColor("#111827")
-      .text("Line Items", 50, 275);
+      .text("Line Items", 50, 285);
 
-    doc.roundedRect(50, 295, 495, 25, 6).fill("#F3F4F6");
+    // Table Header Background
+    doc.roundedRect(50, 305, 495, 28, 8).fill("#F3F4F6");
 
+    // Table Header Text
     doc.font(BOLD).fontSize(10).fillColor("#111827");
-    doc.text("Description", 60, 303);
-    doc.text("Qty", 300, 303);
-    doc.text("Unit Price", 360, 303);
-    doc.text("Line Total", 470, 303);
+    doc.text("Description", 65, 315);
+    doc.text("Qty", 305, 315);
+    doc.text("Unit Price", 365, 315);
+    doc.text("Line Total", 470, 315);
 
-    let y = 335;
-
+    let y = 350;
     doc.font(REGULAR).fontSize(10).fillColor("#111827");
 
     lineItems.forEach((item) => {
       y = checkPageBreak(y);
 
-      doc.fillColor("#111827").text(item.description, 60, y, { width: 220 });
+      doc.fillColor("#111827").text(item.description, 65, y, { width: 220 });
 
-      doc.fillColor("#6B7280").text(item.quantity.toString(), 305, y);
+      doc.fillColor("#6B7280").text(item.quantity.toString(), 310, y);
 
       doc
         .fillColor("#6B7280")
-        .text(`${currencySymbol}${formatMoney(item.unitPrice)}`, 360, y);
+        .text(`${currencySymbol}${formatMoney(item.unitPrice)}`, 365, y);
 
       doc
         .fillColor("#111827")
@@ -254,51 +279,57 @@ const generateInvoicePDF = async (req, res) => {
     let totalsY = y + 25;
     totalsY = checkPageBreak(totalsY);
 
-    doc.roundedRect(330, totalsY, 215, 130, 10).fill("#F9FAFB");
+    doc.roundedRect(315, totalsY, 230, 140, 12).fill("#F9FAFB");
 
-    doc.font(BOLD).fontSize(10).fillColor("#111827");
-    doc.text("Subtotal:", 350, totalsY + 18);
-    doc.text(`${currencySymbol}${formatMoney(subtotal)}`, 450, totalsY + 18, {
+    doc
+      .roundedRect(315, totalsY, 230, 140, 12)
+      .lineWidth(1)
+      .strokeColor("#E5E7EB")
+      .stroke();
+
+    doc.font(BOLD).fontSize(11).fillColor("#111827");
+    doc.text("Subtotal:", 335, totalsY + 20);
+    doc.text(`${currencySymbol}${formatMoney(subtotal)}`, 450, totalsY + 20, {
       align: "right",
       width: 80,
     });
 
-    doc.font(REGULAR).fillColor("#6B7280");
-    doc.text(`Tax (${taxPercent}%):`, 350, totalsY + 40);
-    doc.text(`${currencySymbol}${formatMoney(taxAmount)}`, 450, totalsY + 40, {
+    doc.font(REGULAR).fontSize(10).fillColor("#6B7280");
+    doc.text(`Tax (${taxPercent}%):`, 335, totalsY + 45);
+    doc.text(`${currencySymbol}${formatMoney(taxAmount)}`, 450, totalsY + 45, {
       align: "right",
       width: 80,
     });
 
-    doc.font(BOLD).fillColor("#111827");
-    doc.text("Total:", 350, totalsY + 62);
-    doc.text(`${currencySymbol}${formatMoney(total)}`, 450, totalsY + 62, {
+    doc.font(BOLD).fontSize(11).fillColor("#111827");
+    doc.text("Total:", 335, totalsY + 70);
+    doc.text(`${currencySymbol}${formatMoney(total)}`, 450, totalsY + 70, {
       align: "right",
       width: 80,
     });
 
-    doc.font(REGULAR).fillColor("#6B7280");
-    doc.text("Amount Paid:", 350, totalsY + 84);
-    doc.text(`${currencySymbol}${formatMoney(amountPaid)}`, 450, totalsY + 84, {
+    doc.font(REGULAR).fontSize(10).fillColor("#6B7280");
+    doc.text("Amount Paid:", 335, totalsY + 95);
+    doc.text(`${currencySymbol}${formatMoney(amountPaid)}`, 450, totalsY + 95, {
       align: "right",
       width: 80,
     });
 
-    doc.font(BOLD).fillColor("#DC2626");
-    doc.text("Balance Due:", 350, totalsY + 106);
-    doc.text(`${currencySymbol}${formatMoney(balanceDue)}`, 450, totalsY + 106, {
+    doc.font(BOLD).fontSize(11).fillColor("#DC2626");
+    doc.text("Balance Due:", 335, totalsY + 120);
+    doc.text(`${currencySymbol}${formatMoney(balanceDue)}`, 450, totalsY + 120, {
       align: "right",
       width: 80,
     });
 
     // ---------------- PAYMENTS ----------------
-    let paymentsY = totalsY + 160;
+    let paymentsY = totalsY + 170;
     paymentsY = checkPageBreak(paymentsY);
 
     doc.font(BOLD).fontSize(12).fillColor("#111827");
     doc.text("Payments", 50, paymentsY);
 
-    let payY = paymentsY + 20;
+    let payY = paymentsY + 25;
     doc.font(REGULAR).fontSize(10).fillColor("#374151");
 
     if (payments.length === 0) {
@@ -307,7 +338,13 @@ const generateInvoicePDF = async (req, res) => {
       payments.forEach((pay, index) => {
         payY = checkPageBreak(payY);
 
-        doc.roundedRect(50, payY, 495, 25, 8).fill("#F3F4F6");
+        doc.roundedRect(50, payY, 495, 28, 10).fill("#F3F4F6");
+
+        doc
+          .roundedRect(50, payY, 495, 28, 10)
+          .lineWidth(1)
+          .strokeColor("#E5E7EB")
+          .stroke();
 
         doc
           .fillColor("#111827")
@@ -315,11 +352,11 @@ const generateInvoicePDF = async (req, res) => {
             `${index + 1}. Paid ${currencySymbol}${formatMoney(
               pay.amount
             )} on ${new Date(pay.paymentDate).toDateString()}`,
-            60,
-            payY + 7
+            65,
+            payY + 9
           );
 
-        payY += 35;
+        payY += 40;
       });
     }
 

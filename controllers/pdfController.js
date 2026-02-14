@@ -1,10 +1,11 @@
 const PDFDocument = require("pdfkit");
 const path = require("path");
+
 const Invoice = require("../models/invoice");
 const InvoiceLine = require("../models/invoiceline");
 const Payment = require("../models/payment");
 
-// ✅ format number properly (fixes weird '1 issue)
+// ✅ Fix money formatting
 const formatMoney = (value) => {
   return Number(value || 0).toFixed(2);
 };
@@ -14,8 +15,12 @@ const generateInvoicePDF = async (req, res) => {
     const invoiceId = req.params.id;
 
     const invoice = await Invoice.findById(invoiceId);
-    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
 
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    // ✅ Security: Only owner can download PDF
     if (invoice.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -38,7 +43,7 @@ const generateInvoicePDF = async (req, res) => {
         ? "€"
         : "$";
 
-    // ------------------ PDF RESPONSE HEADERS ------------------
+    // ---------------- PDF RESPONSE HEADERS ----------------
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -48,7 +53,11 @@ const generateInvoicePDF = async (req, res) => {
     const doc = new PDFDocument({ margin: 50, size: "A4" });
     doc.pipe(res);
 
-    // ------------------ COMPANY INFO ------------------
+    // ---------------- FONTS (UNICODE SUPPORT) ----------------
+    const fontRegular = path.join(__dirname, "../fonts/DejaVuSans.ttf");
+    const fontBold = path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf");
+
+    // ---------------- COMPANY INFO ----------------
     const company = {
       name: "Monefy Invoice System",
       email: "support@monefy.com",
@@ -56,11 +65,10 @@ const generateInvoicePDF = async (req, res) => {
       address: "Noida, Uttar Pradesh, India",
     };
 
-    // ------------------ LOGO ------------------
-    // Put your logo inside backend/assets/logo.png
+    // ---------------- LOGO PATH ----------------
     // const logoPath = path.join(__dirname, "../assets/logo.png");
 
-    // Helper to draw line
+    // ---------------- HELPERS ----------------
     const drawLine = (y) => {
       doc
         .strokeColor("#E5E7EB")
@@ -70,7 +78,6 @@ const generateInvoicePDF = async (req, res) => {
         .stroke();
     };
 
-    // Helper to check page break
     const checkPageBreak = (y) => {
       if (y > 740) {
         doc.addPage();
@@ -79,27 +86,27 @@ const generateInvoicePDF = async (req, res) => {
       return y;
     };
 
-    // ------------------ HEADER ------------------
+    // ---------------- HEADER ----------------
     let startY = 45;
 
-    // Logo
+    // Logo (optional)
     // try {
     //   doc.image(logoPath, 50, startY, { width: 50 });
     // } catch (err) {
-    //   // if logo missing, ignore
+    //   // ignore if logo missing
     // }
 
-    // Company name
+    // Company Name + Details
     doc
+      .font(fontBold)
       .fontSize(18)
       .fillColor("#111827")
-      .font("Helvetica-Bold")
       .text(company.name, 110, startY);
 
     doc
+      .font(fontRegular)
       .fontSize(10)
       .fillColor("#6B7280")
-      .font("Helvetica")
       .text(company.address, 110, startY + 22);
 
     doc.text(company.email, 110, startY + 37);
@@ -107,16 +114,16 @@ const generateInvoicePDF = async (req, res) => {
 
     // Invoice Title
     doc
+      .font(fontBold)
       .fontSize(26)
       .fillColor("#111827")
-      .font("Helvetica-Bold")
       .text("INVOICE", 400, startY, { align: "right" });
 
-    // Invoice Meta Info
+    // Invoice Meta
     doc
+      .font(fontRegular)
       .fontSize(10)
       .fillColor("#6B7280")
-      .font("Helvetica")
       .text(`Invoice No: ${invoice.invoiceNumber}`, 400, startY + 35, {
         align: "right",
       });
@@ -129,15 +136,15 @@ const generateInvoicePDF = async (req, res) => {
       align: "right",
     });
 
-    // Status badge
+    // Status Badge
     const statusColor = invoice.status === "PAID" ? "#16A34A" : "#D97706";
 
     doc.roundedRect(405, startY + 85, 130, 25, 12).fill(statusColor);
 
     doc
       .fillColor("white")
+      .font(fontBold)
       .fontSize(11)
-      .font("Helvetica-Bold")
       .text(invoice.status, 405, startY + 92, {
         width: 130,
         align: "center",
@@ -145,42 +152,44 @@ const generateInvoicePDF = async (req, res) => {
 
     drawLine(150);
 
-    // ------------------ BILL TO ------------------
+    // ---------------- BILL TO ----------------
     doc
+      .font(fontBold)
       .fontSize(12)
       .fillColor("#111827")
-      .font("Helvetica-Bold")
       .text("Billed To", 50, 170);
 
     doc
+      .font(fontRegular)
       .fontSize(11)
       .fillColor("#111827")
-      .font("Helvetica")
       .text(invoice.customerName, 50, 190);
 
     doc
+      .font(fontRegular)
       .fontSize(10)
       .fillColor("#6B7280")
       .text(`Currency: ${invoice.currency}`, 50, 208);
 
-    // ------------------ LINE ITEMS ------------------
+    // ---------------- LINE ITEMS ----------------
     doc
+      .font(fontBold)
       .fontSize(12)
       .fillColor("#111827")
-      .font("Helvetica-Bold")
       .text("Line Items", 50, 245);
 
-    // Table Header background
+    // Table Header Background
     doc.roundedRect(50, 265, 495, 25, 6).fill("#F3F4F6");
 
-    doc.fillColor("#111827").fontSize(10).font("Helvetica-Bold");
+    doc.font(fontBold).fontSize(10).fillColor("#111827");
     doc.text("Description", 60, 273);
     doc.text("Qty", 300, 273);
     doc.text("Unit Price", 360, 273);
     doc.text("Line Total", 470, 273);
 
     let y = 305;
-    doc.font("Helvetica").fontSize(10).fillColor("#111827");
+
+    doc.font(fontRegular).fontSize(10).fillColor("#111827");
 
     lineItems.forEach((item) => {
       y = checkPageBreak(y);
@@ -195,10 +204,10 @@ const generateInvoicePDF = async (req, res) => {
 
       doc
         .fillColor("#111827")
-        .font("Helvetica-Bold")
+        .font(fontBold)
         .text(`${currencySymbol}${formatMoney(item.lineTotal)}`, 470, y);
 
-      doc.font("Helvetica");
+      doc.font(fontRegular);
 
       y += 22;
 
@@ -212,56 +221,57 @@ const generateInvoicePDF = async (req, res) => {
       y += 10;
     });
 
-    // ------------------ TOTALS BOX ------------------
+    // ---------------- TOTALS BOX ----------------
     let totalsY = y + 25;
     totalsY = checkPageBreak(totalsY);
 
     doc.roundedRect(330, totalsY, 215, 130, 10).fill("#F9FAFB");
 
-    doc.fontSize(10).font("Helvetica-Bold").fillColor("#111827");
+    doc.font(fontBold).fontSize(10).fillColor("#111827");
     doc.text("Subtotal:", 350, totalsY + 18);
     doc.text(`${currencySymbol}${formatMoney(subtotal)}`, 450, totalsY + 18, {
       align: "right",
       width: 80,
     });
 
-    doc.font("Helvetica").fillColor("#6B7280");
+    doc.font(fontRegular).fillColor("#6B7280");
     doc.text(`Tax (${taxPercent}%):`, 350, totalsY + 40);
     doc.text(`${currencySymbol}${formatMoney(taxAmount)}`, 450, totalsY + 40, {
       align: "right",
       width: 80,
     });
 
-    doc.font("Helvetica-Bold").fillColor("#111827");
+    doc.font(fontBold).fillColor("#111827");
     doc.text("Total:", 350, totalsY + 62);
     doc.text(`${currencySymbol}${formatMoney(total)}`, 450, totalsY + 62, {
       align: "right",
       width: 80,
     });
 
-    doc.font("Helvetica").fillColor("#6B7280");
+    doc.font(fontRegular).fillColor("#6B7280");
     doc.text("Amount Paid:", 350, totalsY + 84);
     doc.text(`${currencySymbol}${formatMoney(amountPaid)}`, 450, totalsY + 84, {
       align: "right",
       width: 80,
     });
 
-    doc.font("Helvetica-Bold").fillColor("#DC2626");
+    doc.font(fontBold).fillColor("#DC2626");
     doc.text("Balance Due:", 350, totalsY + 106);
     doc.text(`${currencySymbol}${formatMoney(balanceDue)}`, 450, totalsY + 106, {
       align: "right",
       width: 80,
     });
 
-    // ------------------ PAYMENTS ------------------
+    // ---------------- PAYMENTS ----------------
     let paymentsY = totalsY + 160;
     paymentsY = checkPageBreak(paymentsY);
 
-    doc.fontSize(12).font("Helvetica-Bold").fillColor("#111827");
+    doc.font(fontBold).fontSize(12).fillColor("#111827");
     doc.text("Payments", 50, paymentsY);
 
     let payY = paymentsY + 20;
-    doc.fontSize(10).font("Helvetica").fillColor("#374151");
+
+    doc.font(fontRegular).fontSize(10).fillColor("#374151");
 
     if (payments.length === 0) {
       doc.fillColor("#6B7280").text("No payments yet.", 50, payY);
@@ -271,28 +281,21 @@ const generateInvoicePDF = async (req, res) => {
 
         doc.roundedRect(50, payY, 495, 25, 8).fill("#F3F4F6");
 
-        doc.fillColor("#111827").text(
-          `${index + 1}. Paid ${currencySymbol}${formatMoney(
-            pay.amount
-          )} on ${new Date(pay.paymentDate).toDateString()}`,
-          60,
-          payY + 7
-        );
+        doc
+          .fillColor("#111827")
+          .font(fontRegular)
+          .text(
+            `${index + 1}. Paid ${currencySymbol}${formatMoney(
+              pay.amount
+            )} on ${new Date(pay.paymentDate).toDateString()}`,
+            60,
+            payY + 7
+          );
 
         payY += 35;
       });
     }
 
-    // ------------------ FOOTER ------------------
-    doc
-      .fontSize(9)
-      .fillColor("#9CA3AF")
-      .text(`Generated by ${company.name}`, 50, 790, {
-        align: "center",
-        width: 495,
-      });
-
-    doc.end();
   } catch (error) {
     console.log("PDF Error:", error);
     res.status(500).json({ message: "PDF generation failed" });
